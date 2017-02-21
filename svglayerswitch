@@ -1,0 +1,307 @@
+#!/usr/bin/env python
+
+import sys,os,argparse
+
+# ==============================================================================
+
+def printhelp():
+  print('''
+
+NAME
+
+  svglayerswitch - turn on/off layers in a SVG-file to output SVG/PDF/PNG frames
+
+USAGE:
+
+  $ svglayerswitch [--svg] [--pdf] [--png] [-C] [-D] main.svg settings.log
+
+DESCRIPTION
+
+  Handle the visibility of the layers in the SVG-file "main.svg", and store the
+  selected visibility (typically a frame from an animation) to a SVG, PDF, or
+  PNG file. The visibility and output file names are handled in the
+  "settings.log" file. This file has the following structure:
+
+    filename_1: visible_layers
+    filename_2: visible_layers
+    ...
+
+  whereby the filenames are appended the selected extension.
+
+EXAMPLE
+
+  The SVG-file "test.svg" has layers: l1,l2,l3. Three files are created: with
+  l1, l2, and l3 visible, only l2 visible, and only l3 visible. "test.log" has
+  the following format:
+
+    test_all: l1,l2,l3
+    test_l2: l2
+    test_l3: l3
+
+  Running:
+
+    $ svglayerswitch test.svg test.log
+
+  creates the files "test_all.pdf", "test_l2.pdf", and "test_l3.pdf".
+
+OPTIONS
+
+  --svg
+    Create a SVG-file of each frame.
+
+  --pdf [default]
+    Create a PDF-file of each frame.
+
+  --png
+    Create a PNG-file of each frame.
+
+  -C, --export-area-page [default]
+    See the Inkscape command-line options.
+
+  -D, --export-area-drawing
+    See the Inkscape command-line options.
+
+  -b --background-color [black, white, #abccee]
+    Specify the background color. If unspecified, none is used as the default.
+
+VERSION
+
+  Version 2.0, April 2016
+
+COPYRIGHT
+
+  T.W.J. de Geus
+  tom@geus.me
+  www.geus.me
+
+  ''')
+  sys.exit(1)
+
+# ==============================================================================
+
+def printversion():
+  print('''
+Version 2.0, 2016
+- Changed IO to argparse [TdG]
+- Changed extension selection [TdG]
+
+Version 1.0, 2013
+- First version [TdG]
+
+Editors
+[TdG] Tom de Geus
+  ''')
+  sys.exit(1)
+
+# ==============================================================================
+
+def which(program):
+  def is_exe(fpath):
+    return os.path.exists(fpath) and os.access(fpath, os.X_OK)
+
+  def ext_candidates(fpath):
+    yield fpath
+    for ext in os.environ.get("PATHEXT", "").split(os.pathsep):
+      yield fpath + ext
+
+  fpath, fname = os.path.split(program)
+  if fpath:
+    if is_exe(program):
+      return program
+  else:
+    for path in os.environ["PATH"].split(os.pathsep):
+      exe_file = os.path.join(path, program)
+      for candidate in ext_candidates(exe_file):
+        if is_exe(candidate):
+          return candidate
+
+  return None
+
+# ==============================================================================
+
+# store function name
+function = os.path.basename(sys.argv[0])
+
+# set options/arguments
+opts = [\
+  ((     'files'                ),dict(nargs=2,type=str,metavar='MAIN.SVG SETTING.LOG')),
+  (('-h','--help'               ),dict(action='store_true'                            )),
+  ((     '--version'            ),dict(action='store_true'                            )),
+  ((     '--svg'                ),dict(action='store_true'                            )),
+  ((     '--pdf'                ),dict(action='store_true'                            )),
+  ((     '--png'                ),dict(action='store_true'                            )),
+  (('-b','--background-color'   ),dict(nargs=1,type=str                               )),
+  (('-C','--export-area-page'   ),dict(action='store_true'                            )),
+  (('-D','--export-area-drawing'),dict(action='store_true'                            )),
+]
+
+# parse command-line arguments
+# - catch help
+if sys.argv[1] in ['-h','--help'   ]: printhelp()
+if sys.argv[1] in [     '--version']: printversion()
+# - create parser
+parser = argparse.ArgumentParser(add_help=False)
+for (arg,opt) in opts:
+  if type(arg)==tuple: parser.add_argument(*arg,**opt)
+  else               : parser.add_argument( arg,**opt)
+# - execute parser / convert to "<dict>"
+args = vars(parser.parse_args())
+# - print help and exit
+if args['help'   ]: printhelp()
+if args['version']: printversion()
+
+# read from list
+for key in ['background_color']:
+  if args[key] is not None:
+    args[key] = args[key][0]
+
+# check for conflicting options
+if args['export_area_drawing'] and args['export_area_page']:
+  print('The options --export-area-drawing and --export-area-page are exclusive')
+  sys.exit(1)
+if args['export_area_drawing'] and args['background_color']:
+  print('The options --export-area-drawing and --background-color are exclusive')
+  sys.exit(1)
+
+# read input files
+(fsvg,finp) = args['files']
+# convert name
+if len(finp.split('.svg'))>1:
+  (fsvg,finp) = (finp,fsvg)
+
+# check files
+for i in (fsvg,finp):
+  if not os.path.isfile(i):
+    print('[{name:s}]: unknown input file "{file:s}"'.format(name=function,file=i))
+    sys.exit(1)
+
+# ------------------------------------------------------------------------------
+# define commands
+# ------------------------------------------------------------------------------
+
+# set default options
+if not args['pdf'] and not args['png'] and not args['svg']:
+  args['pdf'] = True
+
+# set Inkscape options
+inkscape_opt = []
+if args['export_area_page'   ]: inkscape_opt += ['--export-area-page'   ]
+if args['export_area_drawing']: inkscape_opt += ['--export-area-drawing']
+inkscape_opt = ' '.join(inkscape_opt)
+
+# set rsvg options
+rsvg_opt = []
+if args['background_color'] is not None: rsvg_opt += ['-b '+args['background_color']]
+rsvg_opt = ' '.join(rsvg_opt)
+
+# set command to convert SVG -> PNG
+if args['png']:
+  if   which('rsvg-convert') and not args['export_area_drawing']: args['png'] = which('rsvg-convert')+' '+rsvg_opt+' -o {file:s}.png {file:s}.svg'
+  elif which('inkscape'    )                                    : args['png'] = which('inkscape'    )+' '+inkscape_opt+' --export-png={file:s}.png {file:s}.svg'
+  else: print('Neither "inkscape" nor "rsvg-convert" have been found'); sys.exit(1)
+
+# set command to convert SVG -> PDF
+if args['pdf']:
+  if which('inkscape'): args['pdf'] = which('inkscape')+' '+inkscape_opt+' --export-pdf={file:s}.pdf {file:s}.svg'
+  else: print('"inkscape" has not been found'); sys.exit(1)
+
+# ==============================================================================
+# load settings file
+# ==============================================================================
+
+def settings(filename):
+  '''
+Read settings file.
+
+:argument:
+
+  **filename** (``<str>``)
+    File-name of the settings file.
+
+:returns:
+
+  **files** (``<dict>``)
+    A dictionary with the file-names of the frames, and the layers that are
+    visible for that frame.
+  '''
+
+  text  = open(filename,'r').read()
+  files = {}
+
+  for line in text.split('\n'):
+    if len(line.split(':'))>1:
+      files[line.split(':')[0]] = line.split(':')[1].replace(' ','').split(',')
+
+  return files
+
+# ==============================================================================
+# set selected layers visible
+# ==============================================================================
+
+def convert(text,visible):
+  '''
+Modify the visibility of a SVG-file.
+
+:arguments:
+
+  **text** (``<str>``)
+    The SVG-file (as string).
+
+  **visible** (``<list>``)
+    The names of the layers that should be visible.
+
+:returns:
+
+  **text** (``<str>``)
+    The SVG-file with all layers invisible, except for the selected layer.
+  '''
+
+  # find layer settings
+  layers = text.split('inkscape:label=')
+
+  # loop over layers
+  for ilab in range(len(layers))[1:]:
+
+    # name of the label
+    name = layers[ilab].split('\n')[0].replace('"','').replace('\'','')
+
+    # select text-block that belongs to the layer
+    beg  = layers[ilab-1].split('<g')[-1]
+    end  = layers[ilab  ].split('>' )[ 0]
+    orig = beg+'inkscape:label='+end
+
+    # modify text-block such that the layer is invisible
+    repl = orig.replace('style="display:inline','style="display:none')
+
+    # optionally set the layer visible
+    if name in visible:
+      repl = repl.replace('style="display:none','style="display:inline')
+
+    # apply visibility by modifying the text
+    text = text.replace(orig,repl)
+
+  return text
+
+
+# ==============================================================================
+
+import platform
+
+# read the SVG-file and the output settings
+text  = open(fsvg,'r').read()
+files = settings(finp)
+
+# loop over files and convert
+for file in sorted(files):
+
+  file = os.path.splitext(file)[0]
+
+  print('[{function:s}] {file:s}'.format(function=function,file=file))
+
+  # store SVG-file with selected visibility
+  open(file+'.svg','w').write(convert(text,files[file]))
+
+  # convert using Inkscape
+  if     args['pdf']: os.system(args['pdf']      .format(file=file))
+  if     args['png']: os.system(args['png']      .format(file=file))
+  if not args['svg']: os.system('rm {file:s}.svg'.format(file=file))

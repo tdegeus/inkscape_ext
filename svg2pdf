@@ -1,0 +1,154 @@
+#!/usr/bin/env python
+
+import sys,os,argparse,re,time,subprocess
+
+# ==============================================================================
+
+def error(message):
+  print(message)
+  sys.exit(1)
+
+# ==============================================================================
+
+def printversion():
+  print('''
+Version 0.1
+  ''')
+  sys.exit(0)
+
+# ==============================================================================
+
+def printhelp():
+  print('''
+NAME
+
+  svg2pdf - convert a SVG-file to a PDF-file using Inkscape
+
+USAGE
+
+  $ svg2pdf INPUT.SVG [-o OUTPUT.PDF]
+
+DESCRIPTION
+
+  Convert a SVG-file to a PDF-file using Inkscape
+
+OPTIONS
+
+  -h, --help
+    Print help.
+
+  --version
+    Print change-log.
+
+  -o, --output STR
+    Specify the output-file manually. By default it has the same name as the
+    SVG-file but with the ".pdf" extension.
+
+  --raw
+    Do not print with GhostScript to enhance the compatibility of the PDF.
+
+  --safe
+    Enhance the safety mode by converting to and from a postscript file. This
+    makes the output a bitmap image.
+
+RELEASE
+
+  Version 0.1, January 2016
+
+COPYRIGHT
+
+  T.W.J. de Geus
+  ''')
+
+  sys.exit(0)
+
+# ==============================================================================
+
+# set options/arguments
+opts   = [\
+  ((     'input'                ),dict(nargs='+',type=str,metavar='INPUT.PDF')),
+  (('-o','--output'             ),dict(nargs=1  ,type=str,metavar='STR'      )),
+  (('-h','--help'               ),dict(action='store_true'                   )),
+  ((     '--version'            ),dict(action='store_true'                   )),
+  ((     '--raw'                ),dict(action='store_true'                   )),
+  ((     '--safe'               ),dict(action='store_true'                   )),
+  (('-D','--export-area-drawing'),dict(action='store_true'                   )),
+]
+
+# parse command-line arguments
+# - catch help
+if sys.argv[1] in ['-h','--help'   ]: printhelp()
+if sys.argv[1] in [     '--version']: printversion()
+# - create parser
+parser = argparse.ArgumentParser(add_help=False)
+for (arg,opt) in opts:
+  if type(arg)==tuple: parser.add_argument(*arg,**opt)
+  else               : parser.add_argument( arg,**opt)
+# - execute parser / convert to "<dict>"
+args = vars(parser.parse_args())
+# - print help and exit
+if args['help'   ]: printhelp()
+if args['version']: printversion()
+
+# check
+if args['output'] is not None:
+  if len(args['input'])>1:
+    error('Not allowed to enter multiple input files if an output file is specified')
+else:
+  args['output'] = [name.replace('.svg','.pdf') for name in args['input']]
+
+# ==============================================================================
+
+for orig,dest in zip(args['input'],args['output']):
+
+  if orig==dest:
+    print '%s and %s are the same file'%(orig,dest)
+
+  print('[svg2pdf] %s %s'%(orig,dest))
+
+  orig = os.path.abspath(orig)
+  dest = os.path.abspath(dest)
+
+  if args['export_area_drawing']: subprocess.check_output('inkscape --export-pdf-version="1.4" --export-area-drawing --export-pdf="%s" "%s"'%(dest,orig),shell=True)
+  else                          : subprocess.check_output('inkscape --export-pdf-version="1.4" --export-area-page    --export-pdf="%s" "%s"'%(dest,orig),shell=True)
+
+  if args['safe']:
+    time.sleep(0.5)
+    subprocess.check_output('pdf2ps %s %s'                           %(dest      ,dest+'.ps'),shell=True)
+    subprocess.check_output('ps2pdf -dUseFlateCompression=true %s %s'%(dest+'.ps',dest      ),shell=True)
+    subprocess.check_output('rm %s'                                  %(dest+'.ps'           ),shell=True)
+
+  if not args['raw'] or args['safe']:
+    time.sleep(0.5)
+
+    cmd = ' '.join([
+      'gs -q -dBATCH -dNOPAUSE -sDEVICE=pdfwrite',
+      '-dPDFSETTINGS=/printer',
+      '-dCompatibilityLevel=1.3',
+      '-dColorImageDownsampleType=/Bicubic'
+      '-dColorImageResolution=72',
+      '-dGrayImageDownsampleType=/Bicubic',
+      '-dGrayImageResolution=72',
+      '-dMonoImageDownsampleType=/Bicubic',
+      '-dMonoImageResolution=38',
+      '-dOptimize=true',
+      '-dEmbedAllFonts=true',
+      '-dSubsetFonts=true',
+      '-dDownsampleColorImages=true',
+      '-dDownsampleGrayImages=true',
+      '-dDownsampleMonoImages=true',
+      '-dHaveTransparency=false',
+      '-dUseCIEColor',
+      '-dColorConversionStrategy=/sRGB',
+      '-sOutputFile=%s'%(dest+'.temp'),
+      '%s'%dest,
+      '2>/dev/null',
+    ])
+
+    subprocess.check_output(cmd,shell=True)
+    if os.path.getsize(dest+'.temp')<=os.path.getsize(dest):
+      subprocess.check_output('mv %s %s'%(dest+'.temp',dest),shell=True)
+    else:
+      print('[svg2pdf] GhostScript failure, running $ svg2pdf --raw %s %s'%(orig,dest))
+      subprocess.check_output('rm %s'   %(dest+'.temp'     ),shell=True)
+

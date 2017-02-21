@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# ==============================================================================
+
+function printhelp {
+echo "\
+
+NAME
+
+  svgfit - fit page to drawing using Inkscape
+
+USAGE
+
+  $ svgfit FILE
+
+DESCRIPTION
+
+  Fit page to drawing using Inkscape.
+
+OPTIONS
+
+  -h, --help
+    Print help.
+"
+}
+
+# ==============================================================================
+
+if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+  printhelp; exit 0
+fi
+
+# ==============================================================================
+
+# loop over input
+while [ $# -gt 0 ]; do
+
+  # perform cropping
+  /usr/bin/inkscape --verb=FitCanvasToDrawing --verb=FileSave --verb=FileQuit $1
+
+  # remove input argument: move to the next input argument
+  shift 1
+
+done
+

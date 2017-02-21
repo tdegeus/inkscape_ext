@@ -1,0 +1,144 @@
+#!/usr/bin/env python
+
+import argparse
+import subprocess,os,pwd,sys,re
+
+# ==============================================================================
+
+def printversion():
+  print '''
+Version 2.0, December 2015
+  '''
+  sys.exit(0)
+
+
+def printhelp():
+  print '''
+NAME
+
+  svg2png - convert a SVG-file to a PNG-file
+
+USAGE
+
+  $ qexec [--rsvg] [--inkscape] [OPTIONS] FILE [FILE ...]
+
+DESCRIPTION
+
+  Convert an SVG-file to a PNG-file. This function tries to use 'rsvg'. If this
+  if not found the function falls back on, the much slower, 'inkscape'.
+
+OPTIONS
+
+  -h, --help
+    Print help
+
+  -v, --version
+    Print version
+
+  --rsvg
+    Force the use of "rsvg-convert"
+
+  --inkscape
+    Force the use of "inkscape"
+
+OPTIONS - RSVG
+
+  -b --background-color [black, white, #abccee]
+    Specify the background color. If unspecified, none is used as the default.
+
+RELEASE
+
+  Version 2.0, December 2015
+
+COPYRIGHT
+
+  T.W.J. de Geus
+  '''
+  sys.exit(0)
+
+# ==============================================================================
+
+def which(program):
+  def is_exe(fpath):
+    return os.path.exists(fpath) and os.access(fpath, os.X_OK)
+
+  def ext_candidates(fpath):
+    yield fpath
+    for ext in os.environ.get("PATHEXT", "").split(os.pathsep):
+      yield fpath + ext
+
+  fpath, fname = os.path.split(program)
+  if fpath:
+    if is_exe(program):
+      return program
+  else:
+    for path in os.environ["PATH"].split(os.pathsep):
+      exe_file = os.path.join(path, program)
+      for candidate in ext_candidates(exe_file):
+        if is_exe(candidate):
+          return candidate
+
+  return None
+
+# ==============================================================================
+
+# set options/arguments
+opts = [\
+  (('-h','--help'            ),dict(action='store_true'             )),
+  (('-v','--version'         ),dict(action='store_true'             )),
+  ((     '--rsvg'            ),dict(action='store_true'             )),
+  ((     '--inkscape'        ),dict(action='store_true'             )),
+  (('-b','--background-color'),dict(nargs=1  ,type=str              )),
+  ((                         ),dict(nargs='*',type=str ,dest='input')),
+]
+
+# parse command-line arguments
+# - catch help
+if sys.argv[1] in ['-h','--help'   ]: printhelp()
+if sys.argv[1] in [     '--version']: printversion()
+# - create parser
+parser = argparse.ArgumentParser(add_help=False)
+for (arg,opt) in opts:
+  if type(arg)==tuple: parser.add_argument(*arg,**opt)
+  else               : parser.add_argument( arg,**opt)
+# - execute parser / convert to "<dict>"
+args = vars(parser.parse_args())
+# - print help and exit
+if args['help'   ]: printhelp()
+if args['version']: printversion()
+
+# convert from list
+for key in ['background_color']:
+  if type(args[key])==list:
+    args[key] = args[key][0]
+
+# check exclusiveness
+if args['rsvg'] and args['inkscape']:
+  print 'Use either "inkscape" of "rsvg"'; sys.exit(1)
+
+# select executable
+if   args['rsvg'    ]: cmd = which('rsvg-convert')
+elif args['inkscape']: cmd = which('inkscape'    )
+else:
+  if   which('rsvg-convert'): cmd = which('rsvg-convert'); args['rsvg'    ] = True
+  elif which('inkscape'    ): cmd = which('inkscape'    ); args['inkscape'] = True
+# check executable
+if not cmd:
+  print 'Neither "rsvg-convert" or "inkscape" found'; sys.exit(1)
+
+# update commands with options
+if args['rsvg']:
+  if args['background_color'] is not None: cmd += ' -b '+args['background_color']
+  cmd += ' {svg:s} -o {png:s}'
+
+# run
+for svg in args['input']:
+  # - split the filename
+  base,ext = os.path.splitext(svg)
+  # - check existence
+  if ext!='.svg'            : print 'Input must be SVG-file'; sys.exit(1)
+  if not os.path.isfile(svg): print 'Input file not found'; sys.exit(1)
+  # - execute the conversion command
+  subprocess.check_output(cmd.format(svg=svg,png=base+'.png'),shell=True)
+  print '[%s] %s'%(os.path.basename(__file__),svg)
+
