@@ -44,13 +44,6 @@ OPTIONS
     Specify the output-file manually. By default it has the same name as the
     SVG-file but with the ".pdf" extension.
 
-  --raw
-    Do not print with GhostScript to enhance the compatibility of the PDF.
-
-  --safe
-    Enhance the safety mode by converting to and from a postscript file. This
-    makes the output a bitmap image.
-
 RELEASE
 
   Version 0.1, January 2016
@@ -58,6 +51,8 @@ RELEASE
 COPYRIGHT
 
   T.W.J. de Geus
+  tom@geus.me
+  www.geus.me
   ''')
 
   sys.exit(0)
@@ -70,8 +65,6 @@ opts   = [\
   (('-o','--output'             ),dict(nargs=1  ,type=str,metavar='STR'      )),
   (('-h','--help'               ),dict(action='store_true'                   )),
   ((     '--version'            ),dict(action='store_true'                   )),
-  ((     '--raw'                ),dict(action='store_true'                   )),
-  ((     '--safe'               ),dict(action='store_true'                   )),
   (('-D','--export-area-drawing'),dict(action='store_true'                   )),
 ]
 
@@ -111,44 +104,3 @@ for orig,dest in zip(args['input'],args['output']):
 
   if args['export_area_drawing']: subprocess.check_output('inkscape --export-pdf-version="1.4" --export-area-drawing --export-pdf="%s" "%s"'%(dest,orig),shell=True)
   else                          : subprocess.check_output('inkscape --export-pdf-version="1.4" --export-area-page    --export-pdf="%s" "%s"'%(dest,orig),shell=True)
-
-  if args['safe']:
-    time.sleep(0.5)
-    subprocess.check_output('pdf2ps %s %s'                           %(dest      ,dest+'.ps'),shell=True)
-    subprocess.check_output('ps2pdf -dUseFlateCompression=true %s %s'%(dest+'.ps',dest      ),shell=True)
-    subprocess.check_output('rm %s'                                  %(dest+'.ps'           ),shell=True)
-
-  if not args['raw'] or args['safe']:
-    time.sleep(0.5)
-
-    cmd = ' '.join([
-      'gs -q -dBATCH -dNOPAUSE -sDEVICE=pdfwrite',
-      '-dPDFSETTINGS=/printer',
-      '-dCompatibilityLevel=1.3',
-      '-dColorImageDownsampleType=/Bicubic'
-      '-dColorImageResolution=72',
-      '-dGrayImageDownsampleType=/Bicubic',
-      '-dGrayImageResolution=72',
-      '-dMonoImageDownsampleType=/Bicubic',
-      '-dMonoImageResolution=38',
-      '-dOptimize=true',
-      '-dEmbedAllFonts=true',
-      '-dSubsetFonts=true',
-      '-dDownsampleColorImages=true',
-      '-dDownsampleGrayImages=true',
-      '-dDownsampleMonoImages=true',
-      '-dHaveTransparency=false',
-      '-dUseCIEColor',
-      '-dColorConversionStrategy=/sRGB',
-      '-sOutputFile=%s'%(dest+'.temp'),
-      '%s'%dest,
-      '2>/dev/null',
-    ])
-
-    subprocess.check_output(cmd,shell=True)
-    if os.path.getsize(dest+'.temp')<=os.path.getsize(dest):
-      subprocess.check_output('mv %s %s'%(dest+'.temp',dest),shell=True)
-    else:
-      print('[svg2pdf] GhostScript failure, running $ svg2pdf --raw %s %s'%(orig,dest))
-      subprocess.check_output('rm %s'   %(dest+'.temp'     ),shell=True)
-
